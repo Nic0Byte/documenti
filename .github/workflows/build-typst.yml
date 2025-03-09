@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-
+    # Ignora i PDF già generati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -42,15 +42,15 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Imposta Java (necessario per eseguire jSignPdf)
+      # 4. Imposta Java (necessario per eseguire JSignPdf)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Scarica lo ZIP di jSignPdf 2.3.0 (minimal) da SourceForge
-      - name: Download jSignPdf 2.3.0
+      # 5. Scarica lo ZIP di JSignPdf 2.3.0 da SourceForge e estrailo
+      - name: Download JSignPdf 2.3.0
         run: |
           sudo apt-get update
           sudo apt-get install -y unzip wget
@@ -63,7 +63,7 @@ jobs:
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 7. Firma digitalmente i PDF usando la classe principale Signer
+      # 7. Firma digitalmente i PDF usando il JAR (che ha il manifest con Main-Class net.sf.jsignpdf.Signer)
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -71,12 +71,12 @@ jobs:
         run: |
           for pdf in $(find documents -type f -name "*.pdf"); do
             filename=$(basename "$pdf")
-            # Salta se il file è già firmato
+            # Salta se il PDF è già firmato
             if [[ "$filename" == *_signed.pdf ]]; then
               continue
             fi
             echo "Signing $pdf..."
-            java -cp "jsignpdf-2.3.0/JSignPdf.jar:jsignpdf-2.3.0/lib/*" net.sf.jsignpdf.Signer \
+            java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
               -kst PKCS12 \
               -ksf cert.p12 \
