@@ -15,7 +15,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v3
         with:
           persist-credentials: true
@@ -25,6 +25,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -32,27 +33,74 @@ jobs:
         run: |
           cargo install --locked typst-cli
           typst --version
+
       - name: Compile all Typst files
         run: |
-          # Trova tutti i file con estensione .typ nella cartella sources
+          # Trova tutti i file .typ nella cartella sources e li compila in PDF in documents/
           find sources -type f -name "*.typ" | while read -r file; do
-            # Sostituisce 'sources/' con 'documents/' e '.typ' con '.pdf'
             output="documents/$(echo "$file" | sed 's|^sources/||; s|\.typ$|.pdf|')"
-            # Crea la cartella di destinazione se non esiste
             mkdir -p "$(dirname "$output")"
-            # Compila il file .typ in PDF
             typst compile "$file" "$output"
           done
-      - name: Commit and push
+
+      # --- Inizio della fase di firma digitale ---
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Download jSignPdf 2.3.0 (completo)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip wget
+          wget -q "https://sourceforge.net/projects/jsignpdf/files/stable/JSignPdf-2.3.0/jsignpdf-2.3.0.zip/download" -O jsignpdf-2.3.0.zip
+          unzip jsignpdf-2.3.0.zip -d jsignpdf-2.3.0
+          ls -R jsignpdf-2.3.0
+
+      - name: Decode and set up signing certificate
+        run: |
+          echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
+
+      - name: Digitally sign PDFs
+        env:
+          SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
+          JAVA_TOOL_OPTIONS: "--add-opens=java.base/sun.security.pkcs12=ALL-UNNAMED"
+        run: |
+          for pdf in $(find documents -type f -name "*.pdf"); do
+            filename=$(basename "$pdf")
+            # Salta i file già firmati
+            if [[ "$filename" == *_signed.pdf ]]; then
+              continue
+            fi
+            echo "Signing $pdf..."
+            java -cp "jsignpdf-2.3.0/JSignPdf.jar:jsignpdf-2.3.0/lib/*" net.sf.jsignpdf.JSignPdf \
+              -q \
+              -kst PKCS12 \
+              -ksf cert.p12 \
+              -ksp "$SIGN_CERT_PASSWORD" \
+              -ts http://timestamp.digicert.com \
+              -os _signed \
+              "$pdf"
+            signed_pdf="${pdf%.pdf}_signed.pdf"
+            if [ -f "$signed_pdf" ]; then
+              echo "Successfully signed: $signed_pdf"
+              rm "$pdf"
+            else
+              echo "ERROR: Signing failed for $pdf"
+              exit 1
+            fi
+          done
+      # --- Fine della fase di firma digitale ---
+
+      - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add documents/
-          # Se non ci sono cambiamenti, esci senza committare
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Aggiorna PDF"
+          git commit -m "Aggiorna PDF con firma digitale"
           git push origin HEAD:main
-
