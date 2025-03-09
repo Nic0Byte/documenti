@@ -1,10 +1,10 @@
-name: Build Typst Documentation
+name: Build and Sign Typst Documentation
 
 on:
   push:
     branches:
       - main
-    # Ignora i PDF già generati per evitare loop
+
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -18,8 +18,6 @@ jobs:
       # 1. Checkout del repository principale
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          persist-credentials: true
 
       - name: Pull latest changes
         run: |
@@ -27,7 +25,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
 
-      # 2. Installa Rust e Typst CLI
+      # 2. Imposta la toolchain Rust e installa Typst CLI
       - name: Set up Rust toolchain and Install Typst CLI
         uses: dtolnay/rust-toolchain@stable
       - name: Install Typst CLI
@@ -35,7 +33,7 @@ jobs:
           cargo install --locked typst-cli
           typst --version
 
-      # 3. Compila i file .typ in PDF
+      # 3. Compila tutti i file .typ in PDF (salvati in documents/)
       - name: Compile all Typst files to PDF
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
@@ -44,14 +42,14 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Imposta Java (necessario per jSignPdf)
+      # 4. Imposta Java (necessario per eseguire jSignPdf)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Scarica lo ZIP di jSignPdf 2.3.0 (minimale)
+      # 5. Scarica lo ZIP di jSignPdf 2.3.0 (minimal) da SourceForge
       - name: Download jSignPdf 2.3.0
         run: |
           sudo apt-get update
@@ -60,31 +58,12 @@ jobs:
           unzip jsignpdf-2.3.0.zip -d jsignpdf-2.3.0
           ls -R jsignpdf-2.3.0
 
-      # 6. Scarica le librerie dalla lista in dependence.xml e copiale in jsignpdf-2.3.0/lib
-      - name: Download dependency jars from dependence.xml
-        run: |
-          # Assicurati che il file dependence.xml sia nella root del repository
-          if [ ! -f dependence.xml ]; then
-            echo "Errore: il file dependence.xml non esiste."
-            exit 1
-          fi
-          mkdir -p jsignpdf-2.3.0/lib
-          echo "Scarico le dipendenze elencate in dependence.xml..."
-          # Estrae le righe con <url> e scarica il jar corrispondente
-          grep "<url>" dependence.xml | sed -e 's/.*<url>\(.*\)<\/url>.*/\1/' | while read -r jarurl; do
-            jarname=$(basename "$jarurl")
-            echo "Scarico $jarname da $jarurl..."
-            wget -q "$jarurl" -O jsignpdf-2.3.0/lib/"$jarname"
-          done
-          echo "Contenuto di jsignpdf-2.3.0/lib:"
-          ls -R jsignpdf-2.3.0/lib
-
-      # 7. Decodifica il certificato dal secret
+      # 6. Decodifica il certificato PKCS#12 dal secret e salvalo in cert.p12
       - name: Decode signing certificate
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 8. Firma digitalmente i PDF
+      # 7. Firma digitalmente i PDF usando la classe principale Signer
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -92,12 +71,12 @@ jobs:
         run: |
           for pdf in $(find documents -type f -name "*.pdf"); do
             filename=$(basename "$pdf")
-            # Salta se già firmato
+            # Salta se il file è già firmato
             if [[ "$filename" == *_signed.pdf ]]; then
               continue
             fi
             echo "Signing $pdf..."
-            java -cp "jsignpdf-2.3.0/JSignPdf.jar:jsignpdf-2.3.0/lib/*" net.sf.jsignpdf.JSignPdf \
+            java -cp "jsignpdf-2.3.0/JSignPdf.jar:jsignpdf-2.3.0/lib/*" net.sf.jsignpdf.Signer \
               -q \
               -kst PKCS12 \
               -ksf cert.p12 \
@@ -115,7 +94,7 @@ jobs:
             fi
           done
 
-      # 9. Commit e push dei PDF firmati
+      # 8. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
