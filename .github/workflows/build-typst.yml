@@ -15,7 +15,7 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      # 1. Clona il repository
+      # 1. Checkout del repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -25,7 +25,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
 
-      # 2. Imposta la toolchain Rust e installa Typst CLI
+      # 2. Installa la toolchain Rust e Typst CLI
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -34,7 +34,7 @@ jobs:
           cargo install --locked typst-cli
           typst --version
 
-      # 3. Compila i file .typ in PDF
+      # 3. Compila tutti i file .typ in PDF (salvati in documents/)
       - name: Compile all Typst files to PDF
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
@@ -43,45 +43,46 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Installa Java (necessario per JSignPdf)
+      # 4. Installa Java (necessario per eseguire JSignPdf)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Scarica lo ZIP di JSignPdf (contiene JSignPdf.jar, InstallCert.jar, ecc.)
-      - name: Download jSignPdf 2.3.0
+      # 5. Scarica lo ZIP di JSignPdf 2.3.0 da SourceForge e estrailo
+      - name: Download JSignPdf 2.3.0
         run: |
           sudo apt-get update
           sudo apt-get install -y unzip wget
           wget -q "https://sourceforge.net/projects/jsignpdf/files/stable/JSignPdf-2.3.0/jsignpdf-2.3.0.zip/download" -O jsignpdf-2.3.0.zip
           unzip jsignpdf-2.3.0.zip -d jsignpdf-2.3.0
+          # Poiché lo ZIP crea una struttura doppia, il contenuto utile è in jsignpdf-2.3.0/jsignpdf-2.3.0/
           ls -R jsignpdf-2.3.0
 
-      # 6. Decodifica il certificato PKCS#12 dal secret
+      # 6. Decodifica il certificato PKCS#12 dal secret e salvalo in cert.p12
       - name: Decode signing certificate
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 7. Firma i PDF usando JSignPdf.jar (che ha Main-Class: net.sf.jsignpdf.Signer)
+      # 7. Firma digitalmente i PDF usando il JAR con il percorso corretto
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
           JAVA_TOOL_OPTIONS: "--add-opens=java.base/sun.security.pkcs12=ALL-UNNAMED"
         run: |
-          # Stampa il contenuto per debug (opzionale)
+          # Mostra il contenuto della cartella jsignpdf-2.3.0 per debug
           ls -R jsignpdf-2.3.0
 
-          # Firma tutti i PDF (escludendo quelli con _signed)
           for pdf in $(find documents -type f -name "*.pdf"); do
             filename=$(basename "$pdf")
+            # Salta se il file è già firmato
             if [[ "$filename" == *_signed.pdf ]]; then
               continue
             fi
-
             echo "Signing $pdf..."
-            java -jar JSignPdf.jar \
+            # Usa il percorso corretto: jsignpdf-2.3.0/jsignpdf-2.3.0/JSignPdf.jar
+            java -jar jsignpdf-2.3.0/jsignpdf-2.3.0/JSignPdf.jar \
               -q \
               -kst PKCS12 \
               -ksf cert.p12 \
@@ -89,7 +90,6 @@ jobs:
               -ts http://timestamp.digicert.com \
               -os _signed \
               "$pdf"
-
             signed_pdf="${pdf%.pdf}_signed.pdf"
             if [ -f "$signed_pdf" ]; then
               echo "Successfully signed: $signed_pdf"
