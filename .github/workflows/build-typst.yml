@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-    # Ignora i PDF già generati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
