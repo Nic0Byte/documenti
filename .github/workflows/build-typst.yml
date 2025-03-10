@@ -1,33 +1,59 @@
-const fs = require('fs');
-const path = require('path');
-const signPDF = require('jsignpdf');
+name: Build Typst Documentation and Sign PDFs with Node
 
-async function signFiles() {
-  const pdfDir = path.join(__dirname, 'documents');
-  const files = fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf') && !file.endsWith('_signed.pdf'));
-  
-  // Decodifica il certificato dal secret (che è in base64)
-  const certBuffer = Buffer.from(process.env.SIGN_CERT, 'base64');
-  const passphrase = process.env.SIGN_CERT_PASSWORD;
+on:
+  push:
+    branches:
+      - main
+    # Ignora i PDF già generati per evitare loop
+    paths-ignore:
+      - 'documents/**/*.pdf'
 
-  for (const file of files) {
-    const filePath = path.join(pdfDir, file);
-    const pdfBuffer = fs.readFileSync(filePath);
-    try {
-      // Opzioni: puoi personalizzare i parametri (ad esempio, TSA, livello di certificazione, ecc.)
-      const options = {
-        tsa: 'http://timestamp.digicert.com'
-      };
-      const signedBuffer = await signPDF(pdfBuffer, certBuffer, passphrase, options);
-      const signedFilePath = filePath.replace('.pdf', '_signed.pdf');
-      fs.writeFileSync(signedFilePath, signedBuffer);
-      fs.unlinkSync(filePath);
-      console.log(`Signed ${filePath} successfully.`);
-    } catch (err) {
-      console.error(`Failed to sign ${filePath}:`, err);
-      process.exit(1);
-    }
-  }
-}
+permissions:
+  contents: write
 
-signFiles();
+jobs:
+  build-and-sign:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout del repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # 4. Compilazione dei file .typ in PDF (output in documents/)
+      - name: Compile Typst files to PDF
+        run: |
+          find sources -type f -name "*.typ" | while read -r file; do
+            output="documents/$(echo "$file" | sed 's|^sources/||; s|\.typ$|.pdf|')"
+            mkdir -p "$(dirname "$output")"
+            typst compile "$file" "$output"
+          done
+
+      # 5. Firma dei PDF usando node-jsignpdf (script sign.js)
+      - name: Sign PDFs with node-jsignpdf
+        env:
+          SIGN_CERT: ${{ secrets.SIGN_CERT }}
+          SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
+        run: node sign.js
+
+      # 6. Commit e push dei PDF firmati
+      - name: Commit and push signed PDFs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add documents/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Aggiorna PDF con firma digitale"
+          git push origin HEAD:main
