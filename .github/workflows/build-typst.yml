@@ -14,10 +14,10 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout del repository e aggiornamento
+      # 1. Checkout e aggiornamento del repository
       - name: Checkout repository
         uses: actions/checkout@v3
-      
+
       - name: Pull latest changes
         run: |
           git config user.name "github-actions[bot]"
@@ -27,7 +27,7 @@ jobs:
       # 2. Setup della toolchain Rust e installazione di Typst CLI
       - name: Set up Rust toolchain and Install Typst CLI
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Install Typst CLI
         run: |
           cargo install --locked typst-cli
@@ -49,18 +49,38 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Lista della directory jsignpdf-2.3.0 (per confermare che il file di configurazione esista)
+      # 5. Lista della directory jsignpdf-2.3.0 per verificare la presenza dei file
       - name: List jsignpdf-2.3.0 directory
-        run: ls -R jsignpdf-2.3.0
+        run: |
+          echo "Contenuto della directory jsignpdf-2.3.0:"
+          ls -R jsignpdf-2.3.0
 
-      # 6. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
+      # 6. Copia del file di configurazione in $HOME/.JSignPdf e debug dei percorsi
+      - name: Setup and Debug JSignPdf configuration
+        run: |
+          echo "DEBUG: HOME directory: $HOME"
+          mkdir -p $HOME/.JSignPdf
+          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf.properties
+          echo "DEBUG: Listing entire content of \$HOME/.JSignPdf recursively:"
+          ls -laR $HOME/.JSignPdf
+          echo "DEBUG: Content of \$HOME/.JSignPdf/conf.properties:"
+          cat $HOME/.JSignPdf/conf.properties
+
+      # 7. Debug: mostra il percorso corrente e il contenuto della directory di lavoro
+      - name: Debug Workspace Paths
+        run: |
+          echo "DEBUG: Workspace directory: $GITHUB_WORKSPACE"
+          echo "DEBUG: Listing root directory:"
+          ls -la $GITHUB_WORKSPACE
+
+      # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
-          echo "Decoding certificate into cert.p12..."
+          echo "DEBUG: Decodifica del certificato in cert.p12..."
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 7. Firma digitale dei PDF utilizzando il file di configurazione direttamente dalla cartella jsignpdf-2.3.0
+      # 9. Firma digitale dei PDF usando JSignPdf.jar (con debug dei percorsi)
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -71,10 +91,10 @@ jobs:
             if [[ "$filename" == *_signed.pdf ]]; then
               continue
             fi
-            echo "Signing $pdf..."
+            echo "DEBUG: Inizio firma per $pdf"
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
-              -lpf "$GITHUB_WORKSPACE/jsignpdf-2.3.0/conf/conf.properties" \
+              -lpf $HOME/.JSignPdf/conf.properties \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
@@ -83,7 +103,7 @@ jobs:
               "$pdf"
             signed_pdf="${pdf%.pdf}_signed.pdf"
             if [ -f "$signed_pdf" ]; then
-              echo "Successfully signed: $signed_pdf"
+              echo "DEBUG: Firma completata con successo: $signed_pdf"
               rm "$pdf"
             else
               echo "ERROR: Signing failed for $pdf"
@@ -91,14 +111,14 @@ jobs:
             fi
           done
 
-      # 8. Commit e push dei PDF firmati
+      # 10. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add documents/
           if git diff --cached --quiet; then
-            echo "No changes to commit"
+            echo "DEBUG: Nessuna modifica da committare"
             exit 0
           fi
           git commit -m "Aggiorna PDF con firma digitale"
