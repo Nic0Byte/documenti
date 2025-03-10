@@ -18,13 +18,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # 2. Pull latest changes
       - name: Pull latest changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
 
-      # 2. Setup della toolchain Rust e installazione di Typst CLI
+      # 3. Setup della toolchain Rust e installazione di Typst CLI
       - name: Set up Rust toolchain and Install Typst CLI
         uses: dtolnay/rust-toolchain@stable
 
@@ -33,7 +34,7 @@ jobs:
           cargo install --locked typst-cli
           typst --version
 
-      # 3. Compilazione dei file .typ in PDF (output in documents/)
+      # 4. Compilazione dei file .typ in PDF (output in documents/)
       - name: Compile Typst files to PDF
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
@@ -42,46 +43,29 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Setup di Java (necessario per JSignPdf)
+      # 5. Setup di Java (necessario per JSignPdf)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Debug: lista della directory jsignpdf-2.3.0
-      - name: List jsignpdf-2.3.0 directory
+      # 6. Debug: Lista della directory conf per verificare il file di configurazione
+      - name: Debug Configuration File in conf
         run: |
-          echo "DEBUG: Current directory: $(pwd)"
-          echo "DEBUG: Listing directory jsignpdf-2.3.0:"
-          ls -laR jsignpdf-2.3.0
+          echo "DEBUG: Listing directory 'conf':"
+          ls -laR conf
+          echo "DEBUG: Content of conf/conf.properties:"
+          cat conf/conf.properties
 
-      # 6. Crea la directory nascosta .JSignPdf-2.3.0/conf e copia il file di configurazione
-      - name: Create .JSignPdf-2.3.0/conf and copy configuration file
-        run: |
-          echo "DEBUG: Creating .JSignPdf-2.3.0/conf in $(pwd)"
-          mkdir -p .JSignPdf-2.3.0/conf
-          cp jsignpdf-2.3.0/conf/conf.properties .JSignPdf-2.3.0/conf/conf.properties
-          echo "DEBUG: Listing .JSignPdf-2.3.0/conf:"
-          ls -laR .JSignPdf-2.3.0/conf
-          echo "DEBUG: Content of .JSignPdf-2.3.0/conf/conf.properties:"
-          cat .JSignPdf-2.3.0/conf/conf.properties
-
-      # 7. Debug: mostra il workspace
-      - name: Debug Workspace Paths
-        run: |
-          echo "DEBUG: Workspace directory: $(pwd)"
-          echo "DEBUG: Listing root directory:"
-          ls -la
-
-      # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
+      # 7. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "DEBUG: Decoding certificate into cert.p12..."
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 9. Firma digitale dei PDF utilizzando il file di configurazione da .JSignPdf-2.3.0/conf/conf.properties
+      # 8. Firma digitale dei PDF utilizzando il file di configurazione da conf/conf.properties
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -95,7 +79,7 @@ jobs:
             echo "DEBUG: Signing $pdf..."
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
-              -lpf ".JSignPdf-2.3.0/conf/conf.properties" \
+              -lpf "conf/conf.properties" \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
@@ -112,7 +96,7 @@ jobs:
             fi
           done
 
-      # 10. Commit e push dei PDF firmati
+      # 9. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
@@ -122,5 +106,5 @@ jobs:
             echo "DEBUG: No changes to commit"
             exit 0
           fi
-          git commit -m "Update PDFs with digital signature"
+          git commit -m "Aggiorna PDF con firma digitale"
           git push origin HEAD:main
