@@ -1,4 +1,4 @@
-name: Build Typst Documentation, Sign PDFs and Debug Documents
+name: Build Typst Documentation, Sign PDFs and Commit
 
 on:
   push:
@@ -45,19 +45,13 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 5. Debug: Lista dei file nella cartella documents prima della firma
-      - name: Debug: List documents folder before signing
-        run: |
-          echo "DEBUG: Listing documents folder BEFORE signing:"
-          ls -laR documents
-
-      # 6. Setup Node.js
+      # 5. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '16'
 
-      # 7. Inizializza package.json e installa le dipendenze
+      # 6. Inizializza package.json e installa le dipendenze (jsignpdf e node-forge)
       - name: Initialize package.json and install dependencies
         run: |
           echo '{ "name": "node-jsignpdf-workflow", "version": "1.0.0" }' > package.json
@@ -65,20 +59,26 @@ jobs:
           cat package.json
           ls -la node_modules
 
-      # 8. Esegui lo script sign.js per firmare i PDF
+      # 7. Esegui lo script sign.js per firmare i PDF
       - name: Run sign.js script
         env:
           SIGN_CERT: ${{ secrets.SIGN_CERT }}
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
         run: node sign.js
 
-      # 9. Debug: Lista dei file nella cartella documents dopo la firma
-      - name: Debug: List documents folder after signing
+      # 8. Verifica che esista almeno un PDF firmato
+      - name: Verify signed PDFs exist
         run: |
-          echo "DEBUG: Listing documents folder AFTER signing:"
-          ls -laR documents
+          SIGNED_FILES=$(find documents -type f -name "*_signed.pdf")
+          if [ -z "$SIGNED_FILES" ]; then
+            echo "ERROR: Nessun PDF firmato trovato!"
+            exit 1
+          else
+            echo "DEBUG: PDF firmati trovati:"
+            echo "$SIGNED_FILES"
+          fi
 
-      # 10. Commit e push dei PDF firmati
+      # 9. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
