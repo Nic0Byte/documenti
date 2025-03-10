@@ -14,7 +14,7 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout e aggiornamento del repository
+      # 1. Checkout del repository e aggiornamento
       - name: Checkout repository
         uses: actions/checkout@v3
       
@@ -24,7 +24,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
 
-      # 2. Installa la toolchain Rust e Typst CLI
+      # 2. Setup della toolchain Rust e installazione di Typst CLI
       - name: Set up Rust toolchain and Install Typst CLI
         uses: dtolnay/rust-toolchain@stable
       
@@ -33,7 +33,7 @@ jobs:
           cargo install --locked typst-cli
           typst --version
 
-      # 3. Compila i file .typ in PDF (salvati in documents/)
+      # 3. Compilazione dei file .typ in PDF (output in documents/)
       - name: Compile Typst files to PDF
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
@@ -42,14 +42,14 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Installa Java (necessario per JSignPdf)
+      # 4. Setup di Java (necessario per JSignPdf)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Lista la cartella jsignpdf-2.3.0 per confermare la presenza dei file necessari
+      # 5. Lista della directory jsignpdf-2.3.0 (per confermare che il file di configurazione esista)
       - name: List jsignpdf-2.3.0 directory
         run: ls -R jsignpdf-2.3.0
 
@@ -60,7 +60,7 @@ jobs:
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 7. Firma digitalmente i PDF usando JSignPdf.jar
+      # 7. Firma digitale dei PDF utilizzando il file di configurazione direttamente dalla cartella jsignpdf-2.3.0
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -74,7 +74,7 @@ jobs:
             echo "Signing $pdf..."
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
-              -lpf jsignpdf-2.3.0/conf/conf.properties \
+              -lpf "$GITHUB_WORKSPACE/jsignpdf-2.3.0/conf/conf.properties" \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
