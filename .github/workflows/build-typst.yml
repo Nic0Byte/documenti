@@ -14,17 +14,20 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout e pull del repository
+      # 1. Checkout del repository
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          persist-credentials: true
 
+      # 2. Pull latest changes
       - name: Pull latest changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
 
-      # 2. Setup della toolchain Rust e installazione di Typst CLI
+      # 3. Setup della toolchain Rust e installazione di Typst CLI
       - name: Set up Rust and Install Typst CLI
         uses: dtolnay/rust-toolchain@stable
 
@@ -33,7 +36,7 @@ jobs:
           cargo install --locked typst-cli
           typst --version
 
-      # 3. Compilazione dei file .typ in PDF (output in documents/)
+      # 4. Compilazione dei file .typ in PDF (output in documents/)
       - name: Compile Typst files to PDF
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
@@ -42,19 +45,19 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Debug: Lista dei file nella cartella documents prima della firma
+      # 5. Debug: Lista dei file nella cartella documents prima della firma
       - name: Debug: List documents folder before signing
         run: |
           echo "DEBUG: Listing documents folder BEFORE signing:"
           ls -laR documents
 
-      # 5. Setup Node.js
+      # 6. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '16'
 
-      # 6. Inizializza package.json e installa le dipendenze
+      # 7. Inizializza package.json e installa le dipendenze
       - name: Initialize package.json and install dependencies
         run: |
           echo '{ "name": "node-jsignpdf-workflow", "version": "1.0.0" }' > package.json
@@ -62,20 +65,20 @@ jobs:
           cat package.json
           ls -la node_modules
 
-      # 7. Esegui lo script sign.js per firmare i PDF
+      # 8. Esegui lo script sign.js per firmare i PDF
       - name: Run sign.js script
         env:
           SIGN_CERT: ${{ secrets.SIGN_CERT }}
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
         run: node sign.js
 
-      # 8. Debug: Lista dei file nella cartella documents dopo la firma
+      # 9. Debug: Lista dei file nella cartella documents dopo la firma
       - name: Debug: List documents folder after signing
         run: |
           echo "DEBUG: Listing documents folder AFTER signing:"
           ls -laR documents
 
-      # 9. Commit e push dei PDF firmati
+      # 10. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
