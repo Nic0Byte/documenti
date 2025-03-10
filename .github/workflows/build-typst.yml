@@ -1,10 +1,10 @@
-name: Build Typst Documentation, Sign PDFs and Show Signature Data
+name: Build Typst Documentation, Sign PDFs and Debug Documents Folder
 
 on:
   push:
     branches:
       - main
-    # Ignora i PDF già firmati per evitare loop
+    # Ignora i PDF già generati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -15,19 +15,20 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout e pull del repository
+      # 1. Checkout del repository
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           persist-credentials: true
 
+      # 2. Pull latest changes
       - name: Pull latest changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
 
-      # 2. Setup della toolchain Rust e installazione di Typst CLI
+      # 3. Setup della toolchain Rust e installazione di Typst CLI
       - name: Set up Rust and Install Typst CLI
         uses: dtolnay/rust-toolchain@stable
 
@@ -36,7 +37,7 @@ jobs:
           cargo install --locked typst-cli
           typst --version
 
-      # 3. Compilazione dei file .typ in PDF (output in documents/)
+      # 4. Compilazione dei file .typ in PDF (output in documents/)
       - name: Compile Typst files to PDF
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
@@ -45,13 +46,19 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Setup Node.js
+      # 5. Debug: Lista dei file nella cartella documents prima della firma
+      - name: Debug: List documents folder before signing
+        run: |
+          echo "DEBUG: Contenuto della cartella documents PRIMA della firma:"
+          ls -laR documents
+
+      # 6. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '16'
 
-      # 5. Inizializza un package.json minimale ed installa le dipendenze
+      # 7. Inizializza package.json e installa le dipendenze (jsignpdf e node-forge)
       - name: Initialize package.json and install dependencies
         run: |
           echo '{ "name": "node-jsignpdf-workflow", "version": "1.0.0" }' > package.json
@@ -59,7 +66,7 @@ jobs:
           cat package.json
           ls -la node_modules
 
-      # 6. Crea lo script sign.js per firmare i PDF e mostrare i dati della firma
+      # 8. Crea lo script sign.js per firmare i PDF e mostrare i dati della firma
       - name: Create sign.js
         run: |
           cat > sign.js <<'EOF'
@@ -72,11 +79,13 @@ jobs:
             const pdfDir = path.join(__dirname, 'documents');
             // Elenca solo i file PDF che non sono già firmati (_signed.pdf)
             const files = fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf') && !file.endsWith('_signed.pdf'));
-
+            console.log(`DEBUG: Trovati ${files.length} file PDF da firmare nella cartella ${pdfDir}`);
+            
             // Decodifica il certificato PKCS#12 dal secret (in base64)
             const certBuffer = Buffer.from(process.env.SIGN_CERT, 'base64');
             const passphrase = process.env.SIGN_CERT_PASSWORD;
-
+            console.log(`DEBUG: Certificato decodificato, lunghezza buffer: ${certBuffer.length} bytes`);
+            
             // Estrai alcuni dati dal certificato usando node-forge
             try {
               const binaryStr = certBuffer.toString('binary');
@@ -84,50 +93,67 @@ jobs:
               const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, passphrase);
               const bags = p12.getBags({ bagType: forge.pki.oids.certBag });
               const certObj = bags[forge.pki.oids.certBag][0].cert;
-              console.log("Certificate Subject Attributes:", certObj.subject.attributes);
+              console.log("DEBUG: Certificate Subject Attributes:", certObj.subject.attributes);
             } catch (err) {
-              console.error("Errore nell'estrazione dei dati dal certificato:", err);
+              console.error("DEBUG: Errore nell'estrazione dei dati dal certificato:", err);
             }
-
+            
             for (const file of files) {
               const filePath = path.join(pdfDir, file);
-              const pdfBuffer = fs.readFileSync(filePath);
+              console.log(`DEBUG: Elaborazione file: ${filePath}`);
+              let pdfBuffer;
               try {
-                const options = {
-                  tsa: 'http://timestamp.digicert.com'
-                };
+                pdfBuffer = fs.readFileSync(filePath);
+                console.log(`DEBUG: Lettura file completata, dimensione: ${pdfBuffer.length} bytes`);
+              } catch (err) {
+                console.error(`DEBUG: Errore nella lettura del file ${filePath}:`, err);
+                continue;
+              }
+              
+              try {
+                console.log("DEBUG: Inizio firma del file...");
+                const options = { tsa: 'http://timestamp.digicert.com' };
                 const signedBuffer = await signPDF(pdfBuffer, certBuffer, passphrase, options);
+                console.log(`DEBUG: Firma completata, dimensione file firmato: ${signedBuffer.length} bytes`);
                 const signedFilePath = filePath.replace('.pdf', '_signed.pdf');
                 fs.writeFileSync(signedFilePath, signedBuffer);
+                console.log(`DEBUG: File firmato scritto: ${signedFilePath}`);
                 fs.unlinkSync(filePath);
-                console.log(`Signed ${filePath} successfully.`);
+                console.log(`DEBUG: File originale rimosso: ${filePath}`);
               } catch (err) {
-                console.error(`Failed to sign ${filePath}:`, err);
+                console.error(`DEBUG: Errore durante la firma del file ${filePath}:`, err);
                 process.exit(1);
               }
             }
+            console.log("DEBUG: Processo di firma completato per tutti i file.");
           }
-
+          
           signFiles();
           EOF
-          echo "Contents of sign.js:"
+          echo "DEBUG: Contenuto di sign.js:"
           cat sign.js
 
-      # 7. Esegui lo script per firmare i PDF
+      # 9. Esegui lo script per firmare i PDF
       - name: Sign PDFs with node-jsignpdf
         env:
           SIGN_CERT: ${{ secrets.SIGN_CERT }}
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
         run: node sign.js
 
-      # 8. Commit e push dei PDF firmati
+      # 10. Debug: Lista dei file nella cartella documents dopo la firma
+      - name: Debug: List documents folder after signing
+        run: |
+          echo "DEBUG: Contenuto della cartella documents DOPO la firma:"
+          ls -laR documents
+
+      # 11. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add documents/
           if git diff --cached --quiet; then
-            echo "No changes to commit"
+            echo "DEBUG: Nessuna modifica da committare"
             exit 0
           fi
           git commit -m "Aggiorna PDF con firma digitale"
