@@ -1,9 +1,10 @@
-name: Build and Sign Typst Documentation
+name: Build Typst Documentation and Sign PDFs
 
 on:
   push:
     branches:
       - main
+    # Ignora i PDF già generati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -11,86 +12,66 @@ permissions:
   contents: write
 
 jobs:
-  build-and-sign:
+  build:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout del repository
-      - name: Checkout repository
+      # 1. Checkout e pull del repository
+      - name: Checkout
         uses: actions/checkout@v3
+        with:
+          persist-credentials: true
 
-      # 2. Pull latest changes
       - name: Pull latest changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
 
-      # 3. Setup della toolchain Rust e installazione di Typst CLI
-      - name: Set up Rust toolchain and Install Typst CLI
+      # 2. Setup della toolchain Rust e installazione di Typst CLI
+      - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Typst CLI
+      - name: Install Typst
         run: |
           cargo install --locked typst-cli
           typst --version
 
-      # 4. Compilazione dei file .typ in PDF (output in documents/)
-      - name: Compile Typst files to PDF
+      # 3. Compilazione dei file .typ in PDF (output in documents/)
+      - name: Compile all Typst files
         run: |
+          # Trova tutti i file con estensione .typ nella cartella sources
           find sources -type f -name "*.typ" | while read -r file; do
+            # Sostituisce 'sources/' con 'documents/' e '.typ' con '.pdf'
             output="documents/$(echo "$file" | sed 's|^sources/||; s|\.typ$|.pdf|')"
+            # Crea la cartella di destinazione se non esiste
             mkdir -p "$(dirname "$output")"
+            # Compila il file .typ in PDF
             typst compile "$file" "$output"
           done
 
-      # 5. Setup di Java (necessario per JSignPdf)
-      - name: Set up Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '11'
-
-      # 6. Debug: Lista della directory conf (nella root) per verificare il file di configurazione
-      - name: Debug local configuration file
-        run: |
-          echo "DEBUG: Listing directory 'conf':"
-          ls -laR conf
-          echo "DEBUG: Content of conf/conf.properties:"
-          cat conf/conf.properties
-
-      # 7. Copia del file di configurazione nella posizione predefinita $HOME/.JSignPdf/conf/conf.properties
-      - name: Copy configuration to default location
-        run: |
-          echo "DEBUG: Creating directory \$HOME/.JSignPdf/conf and copying conf/conf.properties..."
-          mkdir -p "$HOME/.JSignPdf/conf"
-          cp conf/conf.properties "$HOME/.JSignPdf/conf/conf.properties"
-          echo "DEBUG: Listing \$HOME/.JSignPdf/conf:"
-          ls -laR "$HOME/.JSignPdf/conf"
-          echo "DEBUG: Content of \$HOME/.JSignPdf/conf/conf.properties:"
-          cat "$HOME/.JSignPdf/conf/conf.properties"
-
-      # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
+      # 4. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
-          echo "DEBUG: Decoding certificate into cert.p12..."
+          echo "Decoding certificate into cert.p12..."
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 9. Firma digitale dei PDF utilizzando il file di configurazione da $HOME/.JSignPdf/conf/conf.properties
-      - name: Digitally sign PDFs
+      # 5. Firma digitale dei PDF (solo quelli non ancora firmati)
+      - name: Sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
           JAVA_TOOL_OPTIONS: "--add-opens=java.base/sun.security.pkcs12=ALL-UNNAMED"
         run: |
           for pdf in $(find documents -type f -name "*.pdf"); do
             filename=$(basename "$pdf")
+            # Salta i PDF già firmati (che hanno il suffisso _signed)
             if [[ "$filename" == *_signed.pdf ]]; then
+              echo "Skipping already signed PDF: $pdf"
               continue
             fi
-            echo "DEBUG: Signing $pdf..."
+            echo "Signing $pdf..."
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
-              -lpf "$HOME/.JSignPdf/conf/conf.properties" \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
@@ -99,7 +80,7 @@ jobs:
               "$pdf"
             signed_pdf="${pdf%.pdf}_signed.pdf"
             if [ -f "$signed_pdf" ]; then
-              echo "DEBUG: Successfully signed: $signed_pdf"
+              echo "Successfully signed: $signed_pdf. Removing original $pdf"
               rm "$pdf"
             else
               echo "ERROR: Signing failed for $pdf"
@@ -107,14 +88,14 @@ jobs:
             fi
           done
 
-      # 10. Commit e push dei PDF firmati
+      # 6. Commit e push dei PDF aggiornati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add documents/
           if git diff --cached --quiet; then
-            echo "DEBUG: No changes to commit"
+            echo "No changes to commit"
             exit 0
           fi
           git commit -m "Aggiorna PDF con firma digitale"
