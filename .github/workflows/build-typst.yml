@@ -53,7 +53,7 @@ jobs:
           distribution: temurin
           java-version: '11'
 
-      # 6. Debug: Lista della directory conf nella root per verificare il file di configurazione
+      # 6. Debug: Verifica il file di configurazione nella cartella "conf" della repository
       - name: Debug local configuration file
         run: |
           echo "DEBUG: Listing directory 'conf':"
@@ -88,12 +88,13 @@ jobs:
           for pdf in $(find documents -type f -name "*.pdf"); do
             filename=$(basename "$pdf")
             if [[ "$filename" == *_signed.pdf ]]; then
-              echo "Skipping already signed PDF: $pdf"
+              echo "DEBUG: Skipping already signed PDF: $pdf"
               continue
             fi
             echo "DEBUG: Signing $pdf..."
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
+              -lp \
               -lpf "$HOME/.JSignPdf/conf.properties" \
               -kst PKCS12 \
               -ksf cert.p12 \
