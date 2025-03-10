@@ -34,7 +34,7 @@ async function signFiles() {
     let pdfBuffer;
     try {
       pdfBuffer = fs.readFileSync(filePath);
-      console.log(`DEBUG: Read file successfully, size: ${pdfBuffer.length} bytes`);
+      console.log(`DEBUG: File read successfully, size: ${pdfBuffer.length} bytes`);
     } catch (err) {
       console.error(`DEBUG: Error reading file ${filePath}:`, err);
       continue;
@@ -51,12 +51,12 @@ async function signFiles() {
       fs.unlinkSync(filePath);
       console.log(`DEBUG: Original file removed: ${filePath}`);
     } catch (err) {
-      console.error(`DEBUG: Error during signing process for ${filePath}:`, err);
+      console.error(`DEBUG: Error during signing of ${filePath}:`, err);
       process.exit(1);
     }
   }
   
-  console.log("DEBUG: All files processed.");
+  console.log("DEBUG: Signing process completed for all files.");
 }
 
 signFiles();
