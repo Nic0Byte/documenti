@@ -6,22 +6,17 @@ const forge = require('node-forge');
 
 async function signFiles() {
   const pdfDir = path.join(__dirname, 'documents');
-  // Filtra i file PDF che non sono già firmati (non terminano con _signed.pdf)
+  // Elenca solo i file PDF che non sono già firmati (_signed.pdf)
   const files = fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf') && !file.endsWith('_signed.pdf'));
   
-  console.log(`DEBUG: Trovati ${files.length} file PDF da firmare nella cartella ${pdfDir}`);
+  console.log(`DEBUG: Found ${files.length} PDF files to sign in ${pdfDir}`);
   
   // Decodifica il certificato PKCS#12 dal secret (in base64)
-  const certBase64 = process.env.SIGN_CERT;
+  const certBuffer = Buffer.from(process.env.SIGN_CERT, 'base64');
   const passphrase = process.env.SIGN_CERT_PASSWORD;
-  if (!certBase64 || !passphrase) {
-    console.error("DEBUG: Il certificato o la passphrase non sono impostati nelle variabili d'ambiente!");
-    process.exit(1);
-  }
-  const certBuffer = Buffer.from(certBase64, 'base64');
-  console.log(`DEBUG: Certificato decodificato, lunghezza buffer: ${certBuffer.length} bytes`);
+  console.log(`DEBUG: Certificate buffer length: ${certBuffer.length} bytes`);
   
-  // Estrai e mostra alcuni dati dal certificato usando node-forge
+  // Estrai alcuni dati dal certificato usando node-forge
   try {
     const binaryStr = certBuffer.toString('binary');
     const p12Asn1 = forge.asn1.fromDer(binaryStr);
@@ -30,41 +25,38 @@ async function signFiles() {
     const certObj = bags[forge.pki.oids.certBag][0].cert;
     console.log("DEBUG: Certificate Subject Attributes:", certObj.subject.attributes);
   } catch (err) {
-    console.error("DEBUG: Errore nell'estrazione dei dati dal certificato:", err);
+    console.error("DEBUG: Error extracting certificate data:", err);
   }
   
   for (const file of files) {
     const filePath = path.join(pdfDir, file);
-    console.log(`DEBUG: Elaborazione file: ${filePath}`);
+    console.log(`DEBUG: Processing file: ${filePath}`);
     let pdfBuffer;
     try {
       pdfBuffer = fs.readFileSync(filePath);
-      console.log(`DEBUG: Lettura file completata, dimensione: ${pdfBuffer.length} bytes`);
+      console.log(`DEBUG: Read file successfully, size: ${pdfBuffer.length} bytes`);
     } catch (err) {
-      console.error(`DEBUG: Errore nella lettura del file ${filePath}:`, err);
+      console.error(`DEBUG: Error reading file ${filePath}:`, err);
       continue;
     }
     
     try {
-      console.log("DEBUG: Inizio firma del file...");
-      const options = {
-        tsa: 'http://timestamp.digicert.com'
-        // Puoi aggiungere altre opzioni se necessario
-      };
+      console.log("DEBUG: Starting signature process...");
+      const options = { tsa: 'http://timestamp.digicert.com' };
       const signedBuffer = await signPDF(pdfBuffer, certBuffer, passphrase, options);
-      console.log(`DEBUG: Firma completata, dimensione file firmato: ${signedBuffer.length} bytes`);
+      console.log(`DEBUG: Signature completed, signed file size: ${signedBuffer.length} bytes`);
       const signedFilePath = filePath.replace('.pdf', '_signed.pdf');
       fs.writeFileSync(signedFilePath, signedBuffer);
-      console.log(`DEBUG: File firmato scritto: ${signedFilePath}`);
+      console.log(`DEBUG: Signed file written: ${signedFilePath}`);
       fs.unlinkSync(filePath);
-      console.log(`DEBUG: File originale rimosso: ${filePath}`);
+      console.log(`DEBUG: Original file removed: ${filePath}`);
     } catch (err) {
-      console.error(`DEBUG: Errore durante la firma del file ${filePath}:`, err);
+      console.error(`DEBUG: Error during signing process for ${filePath}:`, err);
       process.exit(1);
     }
   }
   
-  console.log("DEBUG: Processo di firma completato per tutti i file.");
+  console.log("DEBUG: All files processed.");
 }
 
 signFiles();
