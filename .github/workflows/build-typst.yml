@@ -48,43 +48,42 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Usa la cartella jsignpdf-2.3.0 già presente nel repository
+      # 5. Lista la cartella jsignpdf-2.3.0 (già presente nel repository)
       - name: List jsignpdf-2.3.0 directory
         run: ls -R jsignpdf-2.3.0
 
-      # 6. Se la cartella "conf" non esiste nella repository, creala con un file di configurazione di default
-      - name: Create default configuration if not exists
+      # 6. Setup della configurazione: crea la cartella "conf" se non esiste e, se mancante, crea un file di default
+      - name: Setup default configuration if not present
         run: |
-          if [ ! -d conf ]; then
-            echo "Cartella conf non trovata. Creazione di una configurazione di default."
-            mkdir -p conf
-            cat > conf/conf.properties <<EOF
-# Default configuration for JSignPdf
+          mkdir -p conf
+          if [ ! -f conf/conf.properties ]; then
+            cat <<EOF > conf/conf.properties
+# Global properties for advanced JSignPdf configuration
 certificate.checkCriticalExtensions=false
 relax.ssl.security=true
 pdf2image.libraries=jpedal,pdfbox,pdfrenderer
 tsa.hashAlgorithm=SHA-1
 EOF
           fi
+          echo "Default configuration in working directory:"
           ls -l conf/conf.properties
+          echo "Contents:"
+          cat conf/conf.properties
 
       # 7. Copia il file di configurazione nella directory predefinita di JSignPdf ($HOME/.JSignPdf)
-      - name: Setup JSignPdf configuration in home directory
+      - name: Copy configuration to home directory
         run: |
           mkdir -p $HOME/.JSignPdf
-          cp conf/conf.properties $HOME/.JSignPdf/conf.properties
+          cp -f conf/conf.properties $HOME/.JSignPdf/conf.properties
+          echo "Configuration file copied to \$HOME/.JSignPdf/conf.properties:"
           ls -l $HOME/.JSignPdf/conf.properties
 
-      # 8. Debug: mostra il contenuto del file di configurazione
-      - name: Debug configuration file
-        run: cat $HOME/.JSignPdf/conf.properties
-
-      # 9. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
+      # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 10. Firma digitalmente i PDF usando JSignPdf.jar (il manifest definisce Main-Class: net.sf.jsignpdf.Signer)
+      # 9. Firma digitalmente i PDF usando JSignPdf.jar (il manifest specifica Main-Class: net.sf.jsignpdf.Signer)
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -115,7 +114,7 @@ EOF
             fi
           done
 
-      # 11. Commit e push dei PDF firmati
+      # 10. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
