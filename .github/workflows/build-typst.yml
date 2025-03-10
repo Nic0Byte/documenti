@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-    # Ignora i PDF già generati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -18,7 +17,7 @@ jobs:
       # 1. Checkout e aggiornamento del repository
       - name: Checkout repository
         uses: actions/checkout@v3
-
+      
       - name: Pull latest changes
         run: |
           git config user.name "github-actions[bot]"
@@ -49,27 +48,28 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Usa la cartella jsignpdf-2.3.0 già presente nel repository
+      # 5. Lista la cartella jsignpdf-2.3.0 (già presente nel repository)
       - name: List jsignpdf-2.3.0 directory
         run: ls -R jsignpdf-2.3.0
 
-      # 6. Setup della configurazione: copia il file conf/conf.properties dalla repository nella working directory
+      # 6. Setup della configurazione: copia il file di configurazione dalla cartella jsignpdf-2.3.0/conf
       - name: Setup JSignPdf configuration
         run: |
-          mkdir -p conf
-          cp conf/conf.properties conf/conf.properties
-          ls -l conf/conf.properties
+          mkdir -p $HOME/.JSignPdf
+          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf.properties
+          echo "Configuration file copied to \$HOME/.JSignPdf/conf.properties:"
+          ls -l $HOME/.JSignPdf/conf.properties
 
-      # 7. (Opzionale) Mostra il contenuto del file di configurazione
+      # 7. Debug: mostra il contenuto del file di configurazione
       - name: Debug configuration file
-        run: cat conf/conf.properties
+        run: cat $HOME/.JSignPdf/conf.properties
 
       # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 9. Firma digitalmente i PDF usando il JAR (il manifest definisce Main-Class: net.sf.jsignpdf.Signer)
+      # 9. Firma digitalmente i PDF usando il JAR (che ha il manifest con Main-Class: net.sf.jsignpdf.Signer)
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -78,7 +78,6 @@ jobs:
           ls -R jsignpdf-2.3.0
           for pdf in $(find documents -type f -name "*.pdf"); do
             filename=$(basename "$pdf")
-            # Salta i file già firmati
             if [[ "$filename" == *_signed.pdf ]]; then
               continue
             fi
