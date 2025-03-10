@@ -52,18 +52,17 @@ jobs:
       - name: List jsignpdf-2.3.0 directory
         run: ls -R jsignpdf-2.3.0
 
-      # 6. Setup della configurazione: crea la struttura $HOME/.JSignPdf/conf e copia il file di configurazione
+      # 6. Setup della configurazione: copia il file di configurazione direttamente in $HOME/.JSignPdf/conf.properties
       - name: Setup JSignPdf configuration
         run: |
-          echo "HOME is: $HOME"
-          mkdir -p $HOME/.JSignPdf/conf
-          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf/conf.properties
-          echo "Configuration file copied to \$HOME/.JSignPdf/conf/conf.properties:"
-          ls -l $HOME/.JSignPdf/conf/conf.properties
+          mkdir -p $HOME/.JSignPdf
+          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf.properties
+          echo "Configuration file copied to \$HOME/.JSignPdf/conf.properties:"
+          ls -l $HOME/.JSignPdf/conf.properties
 
       # 7. Debug: mostra il contenuto del file di configurazione
       - name: Debug configuration file
-        run: cat $HOME/.JSignPdf/conf/conf.properties
+        run: cat $HOME/.JSignPdf/conf.properties
 
       # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
