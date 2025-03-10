@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+    # Ignora i PDF già generati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -14,7 +15,7 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout e aggiornamento del repository
+      # 1. Checkout e aggiornamento del repository (incluse le cartelle già presenti, come jsignpdf-2.3.0)
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -48,28 +49,32 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Scarica ed estrai lo ZIP di JSignPdf 2.3.0 da SourceForge
-      - name: Download JSignPdf 2.3.0
+      # 5. (Non serve scaricare lo ZIP: la cartella jsignpdf-2.3.0 è già presente)
+      - name: List JSignPdf directory
         run: |
-          sudo apt-get update
-          sudo apt-get install -y unzip wget
-          wget -q "https://sourceforge.net/projects/jsignpdf/files/stable/JSignPdf-2.3.0/jsignpdf-2.3.0.zip/download" -O jsignpdf-2.3.0.zip
-          unzip jsignpdf-2.3.0.zip -d jsignpdf-2.3.0
           ls -R jsignpdf-2.3.0
 
-      # 6. Copia il file di configurazione dalla cartella estratta nella directory predefinita di JSignPdf
+      # 6. Setup della configurazione: copia il file di configurazione dalla cartella jsignpdf-2.3.0 nella directory predefinita di JSignPdf
       - name: Setup JSignPdf configuration
         run: |
           mkdir -p $HOME/.JSignPdf
-          cp jsignpdf-2.3.0/jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf.properties
+          # La struttura della cartella jsignpdf-2.3.0 è la seguente:
+          # jsignpdf-2.3.0/
+          #   conf/           ← contiene conf.properties e pkcs11.cfg
+          #   docs/
+          #   licenses/
+          #   InstallCert.jar
+          #   JSignPdf.jar
+          #   jsignpdf.sh
+          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf.properties
           ls -l $HOME/.JSignPdf/conf.properties
 
-      # 7. Decodifica il certificato PKCS#12 dal secret e salvalo in cert.p12
+      # 7. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 8. Firma digitalmente i PDF usando il JAR (con Main-Class: net.sf.jsignpdf.Signer)
+      # 8. Firma digitalmente i PDF usando il JAR (che ha il manifest con Main-Class: net.sf.jsignpdf.Signer)
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -82,7 +87,7 @@ jobs:
               continue
             fi
             echo "Signing $pdf..."
-            java -jar jsignpdf-2.3.0/jsignpdf-2.3.0/JSignPdf.jar \
+            java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
               -kst PKCS12 \
               -ksf cert.p12 \
