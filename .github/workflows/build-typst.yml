@@ -53,7 +53,7 @@ jobs:
           distribution: temurin
           java-version: '11'
 
-      # 6. Debug: Verifica la presenza del file di configurazione nella cartella "conf" della root
+      # 6. Debug: Lista della directory conf nella root per verificare il file di configurazione
       - name: Debug local configuration file
         run: |
           echo "DEBUG: Listing directory 'conf':"
@@ -61,16 +61,16 @@ jobs:
           echo "DEBUG: Content of conf/conf.properties:"
           cat conf/conf.properties
 
-      # 7. Copia del file di configurazione nella posizione predefinita: $HOME/.JSignPdf/conf/conf.properties
+      # 7. Copia del file di configurazione nella posizione predefinita: $HOME/.JSignPdf/conf.properties
       - name: Copy configuration to default location
         run: |
-          echo "DEBUG: Creating directory \$HOME/.JSignPdf/conf and copying conf/conf.properties..."
-          mkdir -p "$HOME/.JSignPdf/conf"
-          cp conf/conf.properties "$HOME/.JSignPdf/conf/conf.properties"
-          echo "DEBUG: Listing \$HOME/.JSignPdf/conf:"
-          ls -laR "$HOME/.JSignPdf/conf"
-          echo "DEBUG: Content of \$HOME/.JSignPdf/conf/conf.properties:"
-          cat "$HOME/.JSignPdf/conf/conf.properties"
+          echo "DEBUG: Creating directory \$HOME/.JSignPdf and copying conf/conf.properties..."
+          mkdir -p "$HOME/.JSignPdf"
+          cp conf/conf.properties "$HOME/.JSignPdf/conf.properties"
+          echo "DEBUG: Listing \$HOME/.JSignPdf:"
+          ls -laR "$HOME/.JSignPdf"
+          echo "DEBUG: Content of \$HOME/.JSignPdf/conf.properties:"
+          cat "$HOME/.JSignPdf/conf.properties"
 
       # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
@@ -79,7 +79,7 @@ jobs:
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 9. Firma digitale dei PDF utilizzando il file di configurazione da $HOME/.JSignPdf/conf/conf.properties
+      # 9. Firma digitale dei PDF utilizzando il file di configurazione da $HOME/.JSignPdf/conf.properties
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -94,7 +94,7 @@ jobs:
             echo "DEBUG: Signing $pdf..."
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
-              -lpf "$HOME/.JSignPdf/conf/conf.properties" \
+              -lpf "$HOME/.JSignPdf/conf.properties" \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
