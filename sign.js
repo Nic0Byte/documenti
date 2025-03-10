@@ -1,22 +1,46 @@
-// sign.js
 const fs = require('fs');
 const path = require('path');
 const signPDF = require('jsignpdf');
 const forge = require('node-forge');
 
+// Funzione per trovare tutti i PDF in modo ricorsivo
+function getAllPDFs(dir) {
+  let results = [];
+  const list = fs.readdirSync(dir);
+  
+  list.forEach(file => {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+
+    if (stat && stat.isDirectory()) {
+      // Se è una cartella, esegui la funzione ricorsivamente
+      results = results.concat(getAllPDFs(filePath));
+    } else if (file.endsWith('.pdf') && !file.endsWith('_signed.pdf')) {
+      // Aggiungi solo i PDF non firmati
+      results.push(filePath);
+    }
+  });
+
+  return results;
+}
+
 async function signFiles() {
   const pdfDir = path.join(__dirname, 'documents');
-  // Elenca solo i file PDF che non sono già firmati (_signed.pdf)
-  const files = fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf') && !file.endsWith('_signed.pdf'));
+  const files = getAllPDFs(pdfDir);
   
-  console.log(`DEBUG: Found ${files.length} PDF files to sign in ${pdfDir}`);
-  
+  console.log(`DEBUG: Trovati ${files.length} PDF da firmare.`);
+
+  if (files.length === 0) {
+    console.log("DEBUG: Nessun file PDF da firmare trovato.");
+    return;
+  }
+
   // Decodifica il certificato PKCS#12 dal secret (in base64)
   const certBuffer = Buffer.from(process.env.SIGN_CERT, 'base64');
   const passphrase = process.env.SIGN_CERT_PASSWORD;
-  console.log(`DEBUG: Certificate buffer length: ${certBuffer.length} bytes`);
-  
-  // Estrai alcuni dati dal certificato usando node-forge
+
+  console.log(`DEBUG: Certificato caricato, lunghezza buffer: ${certBuffer.length} bytes`);
+
   try {
     const binaryStr = certBuffer.toString('binary');
     const p12Asn1 = forge.asn1.fromDer(binaryStr);
@@ -25,38 +49,40 @@ async function signFiles() {
     const certObj = bags[forge.pki.oids.certBag][0].cert;
     console.log("DEBUG: Certificate Subject Attributes:", certObj.subject.attributes);
   } catch (err) {
-    console.error("DEBUG: Error extracting certificate data:", err);
+    console.error("DEBUG: Errore nell'estrazione del certificato:", err);
   }
-  
-  for (const file of files) {
-    const filePath = path.join(pdfDir, file);
-    console.log(`DEBUG: Processing file: ${filePath}`);
+
+  for (const filePath of files) {
+    console.log(`DEBUG: Elaborazione file: ${filePath}`);
     let pdfBuffer;
+
     try {
       pdfBuffer = fs.readFileSync(filePath);
-      console.log(`DEBUG: File read successfully, size: ${pdfBuffer.length} bytes`);
+      console.log(`DEBUG: Lettura completata, dimensione: ${pdfBuffer.length} bytes`);
     } catch (err) {
-      console.error(`DEBUG: Error reading file ${filePath}:`, err);
+      console.error(`DEBUG: Errore nella lettura del file ${filePath}:`, err);
       continue;
     }
-    
+
     try {
-      console.log("DEBUG: Starting signature process...");
+      console.log("DEBUG: Inizio processo di firma...");
       const options = { tsa: 'http://timestamp.digicert.com' };
       const signedBuffer = await signPDF(pdfBuffer, certBuffer, passphrase, options);
-      console.log(`DEBUG: Signature completed, signed file size: ${signedBuffer.length} bytes`);
+      console.log(`DEBUG: Firma completata, dimensione file firmato: ${signedBuffer.length} bytes`);
+
       const signedFilePath = filePath.replace('.pdf', '_signed.pdf');
       fs.writeFileSync(signedFilePath, signedBuffer);
-      console.log(`DEBUG: Signed file written: ${signedFilePath}`);
+      console.log(`DEBUG: File firmato salvato: ${signedFilePath}`);
+
       fs.unlinkSync(filePath);
-      console.log(`DEBUG: Original file removed: ${filePath}`);
+      console.log(`DEBUG: File originale rimosso: ${filePath}`);
     } catch (err) {
-      console.error(`DEBUG: Error during signing of ${filePath}:`, err);
+      console.error(`DEBUG: Errore durante la firma del file ${filePath}:`, err);
       process.exit(1);
     }
   }
-  
-  console.log("DEBUG: Signing process completed for all files.");
+
+  console.log("DEBUG: Processo di firma completato per tutti i file.");
 }
 
 signFiles();
