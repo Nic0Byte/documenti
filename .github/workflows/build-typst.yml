@@ -49,38 +49,22 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Lista della directory jsignpdf-2.3.0 per verificare la presenza dei file
-      - name: List jsignpdf-2.3.0 directory
+      # 5. Debug: lista della directory .JSignPdf-2.3.0/conf per verificare il file di configurazione
+      - name: Debug Configuration File in .JSignPdf-2.3.0/conf
         run: |
-          echo "DEBUG: Contenuto della directory jsignpdf-2.3.0:"
-          ls -laR jsignpdf-2.3.0
+          echo "DEBUG: Listing directory .JSignPdf-2.3.0/conf:"
+          ls -laR "$GITHUB_WORKSPACE/.JSignPdf-2.3.0/conf"
+          echo "DEBUG: Content of .JSignPdf-2.3.0/conf/conf.properties:"
+          cat "$GITHUB_WORKSPACE/.JSignPdf-2.3.0/conf/conf.properties"
 
-      # 6. Copia del file di configurazione nella cartella 'conf' nella root del repository
-      - name: Copy and Debug Configuration File
-        run: |
-          echo "DEBUG: Copio il file di configurazione in 'conf/conf.properties'"
-          mkdir -p conf
-          cp jsignpdf-2.3.0/conf/conf.properties conf/conf.properties
-          echo "DEBUG: Listing directory 'conf':"
-          ls -laR conf
-          echo "DEBUG: Contenuto di conf/conf.properties:"
-          cat conf/conf.properties
-
-      # 7. Debug: mostra il percorso corrente e il contenuto della directory di lavoro
-      - name: Debug Workspace Paths
-        run: |
-          echo "DEBUG: Workspace directory: $GITHUB_WORKSPACE"
-          echo "DEBUG: Listing root directory:"
-          ls -la $GITHUB_WORKSPACE
-
-      # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
+      # 6. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
-          echo "DEBUG: Decodifica del certificato in cert.p12..."
+          echo "DEBUG: Decoding certificate into cert.p12..."
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 9. Firma digitale dei PDF usando JSignPdf.jar, utilizzando il file di configurazione dalla cartella conf/
+      # 7. Firma digitale dei PDF utilizzando il file di configurazione da .JSignPdf-2.3.0/conf/conf.properties
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -91,10 +75,10 @@ jobs:
             if [[ "$filename" == *_signed.pdf ]]; then
               continue
             fi
-            echo "DEBUG: Inizio firma per $pdf"
+            echo "DEBUG: Signing $pdf..."
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
-              -lpf conf/conf.properties \
+              -lpf "$GITHUB_WORKSPACE/.JSignPdf-2.3.0/conf/conf.properties" \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
@@ -103,7 +87,7 @@ jobs:
               "$pdf"
             signed_pdf="${pdf%.pdf}_signed.pdf"
             if [ -f "$signed_pdf" ]; then
-              echo "DEBUG: Firma completata con successo: $signed_pdf"
+              echo "DEBUG: Successfully signed: $signed_pdf"
               rm "$pdf"
             else
               echo "ERROR: Signing failed for $pdf"
@@ -111,15 +95,15 @@ jobs:
             fi
           done
 
-      # 10. Commit e push dei PDF firmati
+      # 8. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add documents/
           if git diff --cached --quiet; then
-            echo "DEBUG: Nessuna modifica da committare"
+            echo "DEBUG: No changes to commit"
             exit 0
           fi
-          git commit -m "Aggiorna PDF con firma digitale"
+          git commit -m "Update PDFs with digital signature"
           git push origin HEAD:main
