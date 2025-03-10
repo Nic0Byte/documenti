@@ -55,10 +55,10 @@ jobs:
       # 5. Debug: Verifica il file di configurazione nella repository
       - name: Debug repository configuration file
         run: |
-          echo "DEBUG: Listing directory 'conf':"
-          ls -laR "$GITHUB_WORKSPACE/conf"
-          echo "DEBUG: Content of conf/conf.properties:"
-          cat "$GITHUB_WORKSPACE/conf/conf.properties"
+          echo "DEBUG: Listing file \$GITHUB_WORKSPACE/.JSignPdf/conf.properties:"
+          ls -la "$GITHUB_WORKSPACE/.JSignPdf/conf.properties"
+          echo "DEBUG: Content of .JSignPdf/conf.properties:"
+          cat "$GITHUB_WORKSPACE/.JSignPdf/conf.properties"
 
       # 6. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
@@ -67,7 +67,7 @@ jobs:
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 7. Firma digitale dei PDF utilizzando il file di configurazione dalla repository
+      # 7. Firma digitale dei PDF utilizzando il file di configurazione da $GITHUB_WORKSPACE/.JSignPdf/conf.properties
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -83,7 +83,7 @@ jobs:
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
               -lp \
-              -lpf "$GITHUB_WORKSPACE/conf/conf.properties" \
+              -lpf "$GITHUB_WORKSPACE/.JSignPdf/conf.properties" \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
