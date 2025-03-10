@@ -49,30 +49,18 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Lista la cartella jsignpdf-2.3.0 (già presente nel repository)
+      # 5. Lista la cartella jsignpdf-2.3.0 per confermare la presenza dei file necessari
       - name: List jsignpdf-2.3.0 directory
         run: ls -R jsignpdf-2.3.0
 
-      # 6. Setup della configurazione: copia il file di configurazione in $HOME/.JSignPdf/conf.properties
-      - name: Setup JSignPdf configuration
-        run: |
-          mkdir -p $HOME/.JSignPdf
-          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf.properties
-          echo "Configuration file copied to \$HOME/.JSignPdf/conf.properties:"
-          ls -l $HOME/.JSignPdf/conf.properties
-
-      # 7. Debug: mostra il contenuto del file di configurazione
-      - name: Debug configuration file
-        run: cat $HOME/.JSignPdf/conf.properties
-
-      # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
+      # 6. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "Decoding certificate into cert.p12..."
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 9. Firma digitalmente i PDF usando JSignPdf.jar
+      # 7. Firma digitalmente i PDF usando JSignPdf.jar
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -86,7 +74,7 @@ jobs:
             echo "Signing $pdf..."
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
-              -lpf $HOME/.JSignPdf/conf.properties \
+              -lpf jsignpdf-2.3.0/conf/conf.properties \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
@@ -103,7 +91,7 @@ jobs:
             fi
           done
 
-      # 10. Commit e push dei PDF firmati
+      # 8. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
