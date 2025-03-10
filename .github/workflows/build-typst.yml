@@ -27,6 +27,7 @@ jobs:
       # 2. Installa la toolchain Rust e Typst CLI
       - name: Set up Rust toolchain and Install Typst CLI
         uses: dtolnay/rust-toolchain@stable
+      
       - name: Install Typst CLI
         run: |
           cargo install --locked typst-cli
@@ -52,7 +53,7 @@ jobs:
       - name: List jsignpdf-2.3.0 directory
         run: ls -R jsignpdf-2.3.0
 
-      # 6. Setup della configurazione: copia il file di configurazione direttamente in $HOME/.JSignPdf/conf.properties
+      # 6. Setup della configurazione: copia il file di configurazione in $HOME/.JSignPdf/conf.properties
       - name: Setup JSignPdf configuration
         run: |
           mkdir -p $HOME/.JSignPdf
@@ -71,7 +72,7 @@ jobs:
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 9. Firma digitalmente i PDF usando JSignPdf.jar (il manifest specifica Main-Class: net.sf.jsignpdf.Signer)
+      # 9. Firma digitalmente i PDF usando JSignPdf.jar
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -85,6 +86,7 @@ jobs:
             echo "Signing $pdf..."
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
+              -lpf $HOME/.JSignPdf/conf.properties \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
