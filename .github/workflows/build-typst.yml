@@ -14,17 +14,20 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
+      # 1️⃣ Checkout del repository
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           persist-credentials: true
 
+      # 2️⃣ Pull delle ultime modifiche
       - name: Pull latest changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
 
+      # 3️⃣ Setup Rust e installazione Typst CLI
       - name: Set up Rust and Install Typst CLI
         uses: dtolnay/rust-toolchain@stable
 
@@ -33,6 +36,7 @@ jobs:
           cargo install --locked typst-cli
           typst --version
 
+      # 4️⃣ Compilazione dei file .typ in PDF (output in documents/)
       - name: Compile Typst files to PDF
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
@@ -41,24 +45,33 @@ jobs:
             typst compile "$file" "$output"
           done
 
+      # 5️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '16'
 
+      # 6️⃣ Inizializza package.json e installa dipendenze per la firma digitale
       - name: Initialize package.json and install dependencies
         run: |
-          echo '{ "name": "node-jsignpdf-workflow", "version": "1.0.0" }' > package.json
-          npm install jsignpdf node-forge
+          echo '{ "name": "node-signpdf-workflow", "version": "1.0.0" }' > package.json
+          npm install jsignpdf node-forge pdf-lib node-signpdf
           cat package.json
           ls -la node_modules
 
+      # 7️⃣ Creazione del certificato .p12 a partire dal secret SIGN_CERT
+      - name: Create certificate.p12 from secret
+        run: |
+          echo "${{ secrets.SIGN_CERT }}" | base64 -d > certificate.p12
+          ls -la certificate.p12
+
+      # 8️⃣ Esegui lo script sign.js per firmare i PDF
       - name: Run sign.js script
         env:
-          SIGN_CERT: ${{ secrets.SIGN_CERT }}
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
         run: node sign.js
 
+      # 9️⃣ Verifica che esista almeno un PDF firmato
       - name: Verify signed PDFs exist
         run: |
           SIGNED_FILES=$(find documents -type f -name "*_signed.pdf")
@@ -70,6 +83,7 @@ jobs:
             echo "$SIGNED_FILES"
           fi
 
+      # 🔟 Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
