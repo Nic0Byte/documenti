@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-    # Ignora i PDF già generati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -49,21 +48,19 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Usa la cartella jsignpdf-2.3.0 già presente nel repository
+      # 5. Lista la cartella jsignpdf-2.3.0 (già presente nel repository)
       - name: List jsignpdf-2.3.0 directory
         run: ls -R jsignpdf-2.3.0
 
-      # 6. Crea la struttura di configurazione attesa da JSignPdf e copia il file di configurazione
+      # 6. Setup della configurazione: copia l'intera cartella "conf" dalla cartella jsignpdf-2.3.0 nella directory predefinita di JSignPdf
       - name: Setup JSignPdf configuration
         run: |
-          # Crea la directory $HOME/.JSignPdf/conf
           mkdir -p $HOME/.JSignPdf/conf
-          # Copia il file di configurazione dallo ZIP (che si trova in jsignpdf-2.3.0/conf/conf.properties)
-          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf/conf.properties
-          echo "Configuration file in \$HOME/.JSignPdf/conf/conf.properties:"
-          ls -l $HOME/.JSignPdf/conf/conf.properties
+          cp -r jsignpdf-2.3.0/conf/* $HOME/.JSignPdf/conf/
+          echo "Configuration files in $HOME/.JSignPdf/conf:"
+          ls -R $HOME/.JSignPdf/conf
 
-      # 7. Debug: mostra il contenuto del file di configurazione
+      # 7. (Opzionale) Debug: mostra il contenuto del file di configurazione principale
       - name: Debug configuration file
         run: cat $HOME/.JSignPdf/conf/conf.properties
 
@@ -72,7 +69,7 @@ jobs:
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 9. Firma digitalmente i PDF usando il JAR (il manifest specifica Main-Class: net.sf.jsignpdf.Signer)
+      # 9. Firma digitalmente i PDF usando JSignPdf.jar (il manifest definisce Main-Class: net.sf.jsignpdf.Signer)
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
