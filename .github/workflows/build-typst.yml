@@ -1,10 +1,9 @@
-name: Build Typst Documentation, Sign PDFs and Debug
+name: Build Typst Documentation, Sign PDFs and Debug Documents
 
 on:
   push:
     branches:
       - main
-    # Ignora i PDF già generati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -18,8 +17,6 @@ jobs:
       # 1. Checkout e pull del repository
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          persist-credentials: true
 
       - name: Pull latest changes
         run: |
@@ -45,10 +42,10 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Debug: List documents folder BEFORE signing
+      # 4. Debug: Lista dei file nella cartella documents prima della firma
       - name: Debug: List documents folder before signing
         run: |
-          echo "DEBUG: Listing documents folder before signing:"
+          echo "DEBUG: Listing documents folder BEFORE signing:"
           ls -laR documents
 
       # 5. Setup Node.js
@@ -57,7 +54,7 @@ jobs:
         with:
           node-version: '16'
 
-      # 6. Initialize package.json and install dependencies
+      # 6. Inizializza package.json e installa le dipendenze
       - name: Initialize package.json and install dependencies
         run: |
           echo '{ "name": "node-jsignpdf-workflow", "version": "1.0.0" }' > package.json
@@ -72,10 +69,10 @@ jobs:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
         run: node sign.js
 
-      # 8. Debug: List documents folder AFTER signing
+      # 8. Debug: Lista dei file nella cartella documents dopo la firma
       - name: Debug: List documents folder after signing
         run: |
-          echo "DEBUG: Listing documents folder after signing:"
+          echo "DEBUG: Listing documents folder AFTER signing:"
           ls -laR documents
 
       # 9. Commit e push dei PDF firmati
