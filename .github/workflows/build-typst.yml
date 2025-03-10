@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+    # Ignora i PDF già generati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -52,23 +53,26 @@ jobs:
       - name: List jsignpdf-2.3.0 directory
         run: ls -R jsignpdf-2.3.0
 
-      # 6. Setup della configurazione: copia il file di configurazione nella cartella "conf" nella working directory
-      - name: Setup configuration file
+      # 6. Crea la struttura di configurazione attesa da JSignPdf e copia il file di configurazione
+      - name: Setup JSignPdf configuration
         run: |
-          mkdir -p conf
-          cp jsignpdf-2.3.0/conf/conf.properties conf/conf.properties
-          ls -l conf/conf.properties
+          # Crea la directory $HOME/.JSignPdf/conf
+          mkdir -p $HOME/.JSignPdf/conf
+          # Copia il file di configurazione dallo ZIP (che si trova in jsignpdf-2.3.0/conf/conf.properties)
+          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf/conf.properties
+          echo "Configuration file in \$HOME/.JSignPdf/conf/conf.properties:"
+          ls -l $HOME/.JSignPdf/conf/conf.properties
 
-      # 7. Debug: mostra il contenuto del file di configurazione copiato
+      # 7. Debug: mostra il contenuto del file di configurazione
       - name: Debug configuration file
-        run: cat conf/conf.properties
+        run: cat $HOME/.JSignPdf/conf/conf.properties
 
       # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 9. Firma digitalmente i PDF usando JSignPdf.jar
+      # 9. Firma digitalmente i PDF usando il JAR (il manifest specifica Main-Class: net.sf.jsignpdf.Signer)
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
