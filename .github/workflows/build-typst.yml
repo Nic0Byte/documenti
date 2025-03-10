@@ -15,7 +15,7 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout e aggiornamento del repository (incluse le cartelle già presenti, come jsignpdf-2.3.0)
+      # 1. Checkout e aggiornamento del repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -49,32 +49,26 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. (Non serve scaricare lo ZIP: la cartella jsignpdf-2.3.0 è già presente)
+      # 5. Utilizza la cartella jsignpdf-2.3.0 già presente nel repository
       - name: List JSignPdf directory
         run: |
           ls -R jsignpdf-2.3.0
 
-      # 6. Setup della configurazione: copia il file di configurazione dalla cartella jsignpdf-2.3.0 nella directory predefinita di JSignPdf
+      # 6. Setup della configurazione: copia il file di configurazione nella directory predefinita
       - name: Setup JSignPdf configuration
         run: |
-          mkdir -p $HOME/.JSignPdf
-          # La struttura della cartella jsignpdf-2.3.0 è la seguente:
-          # jsignpdf-2.3.0/
-          #   conf/           ← contiene conf.properties e pkcs11.cfg
-          #   docs/
-          #   licenses/
-          #   InstallCert.jar
-          #   JSignPdf.jar
-          #   jsignpdf.sh
-          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf.properties
-          ls -l $HOME/.JSignPdf/conf.properties
+          # Crea la directory conf all'interno di $HOME/.JSignPdf
+          mkdir -p $HOME/.JSignPdf/conf
+          # Copia il file di configurazione dallo ZIP al percorso che JSignPdf controlla
+          cp jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf/conf.properties
+          ls -l $HOME/.JSignPdf/conf/conf.properties
 
       # 7. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 8. Firma digitalmente i PDF usando il JAR (che ha il manifest con Main-Class: net.sf.jsignpdf.Signer)
+      # 8. Firma digitalmente i PDF usando il JAR (con il manifest che specifica Main-Class: net.sf.jsignpdf.Signer)
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
