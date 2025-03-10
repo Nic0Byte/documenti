@@ -132,12 +132,3 @@ jobs:
           fi
           git commit -m "Aggiorna PDF con firma digitale"
           git push origin HEAD:main
-EOF
-
-### Note
-
-- **Verifica delle dipendenze:** Il workflow inizializza un package.json minimale e installa le dipendenze **jsignpdf** e **node-forge**.
-- **Script sign.js:** Lo script legge i file PDF non firmati dalla cartella **documents**, estrae i dati del certificato (come gli attributi del subject) e firma i PDF, salvando il file firmato con il suffisso **_signed.pdf** e rimuovendo il file originale.
-- **Commit e Push:** Infine, se sono presenti modifiche (ovvero PDF firmati), vengono committate e pushate sul branch **main**.
-
-Con questo workflow, potrai vedere nei log i dettagli della firma digitale estratti dal certificato e verificare che vengano firmati solo i file non ancora firmati.
