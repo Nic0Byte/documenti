@@ -1,9 +1,10 @@
-name: Build Typst Documentation and Sign PDFs with Node
+name: Build Typst Documentation, Sign PDFs and Commit
 
 on:
   push:
     branches:
       - main
+    # Evita loop ignorando i PDF già firmati
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -14,22 +15,29 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout del repository
+      # 1. Checkout e pull del repository
       - name: Checkout repository
         uses: actions/checkout@v3
-
-      # 2. Setup Node.js
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
         with:
-          node-version: '16'
+          persist-credentials: true
 
-      # 3. Install dependencies
-      - name: Install dependencies
-        run: npm install
+      - name: Pull latest changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
 
-      # 4. Compilazione dei file .typ in PDF (output in documents/)
-      - name: Compile Typst files to PDF
+      # 2. Setup della toolchain Rust e installazione di Typst CLI
+      - name: Set up Rust and Install Typst CLI
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Typst CLI
+        run: |
+          cargo install --locked typst-cli
+          typst --version
+
+      # 3. Compilazione dei file .typ in PDF (output in documents/)
+      - name: Compile all Typst files to PDF
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
             output="documents/$(echo "$file" | sed 's|^sources/||; s|\.typ$|.pdf|')"
@@ -37,14 +45,76 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 5. Firma dei PDF usando node-jsignpdf (script sign.js)
+      # 4. Setup di Java (per eventuali step futuri, se necessario)
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      # 5. Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      # 6. Crea un package.json minimale e installa jsignpdf
+      - name: Initialize package.json and install dependencies
+        run: |
+          echo '{ "name": "node-jsignpdf-workflow", "version": "1.0.0" }' > package.json
+          npm install jsignpdf
+          cat package.json
+          ls -la node_modules
+
+      # 7. Crea lo script sign.js per firmare i PDF
+      - name: Create sign.js
+        run: |
+          cat > sign.js <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const signPDF = require('jsignpdf');
+
+          async function signFiles() {
+            const pdfDir = path.join(__dirname, 'documents');
+            // Filtra i file PDF che non sono già firmati (non terminano con _signed.pdf)
+            const files = fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf') && !file.endsWith('_signed.pdf'));
+            
+            // Decodifica il certificato PKCS#12 dal secret (in base64)
+            const certBuffer = Buffer.from(process.env.SIGN_CERT, 'base64');
+            const passphrase = process.env.SIGN_CERT_PASSWORD;
+
+            for (const file of files) {
+              const filePath = path.join(pdfDir, file);
+              const pdfBuffer = fs.readFileSync(filePath);
+              try {
+                const options = {
+                  tsa: 'http://timestamp.digicert.com'
+                };
+                const signedBuffer = await signPDF(pdfBuffer, certBuffer, passphrase, options);
+                const signedFilePath = filePath.replace('.pdf', '_signed.pdf');
+                fs.writeFileSync(signedFilePath, signedBuffer);
+                fs.unlinkSync(filePath);
+                console.log(`Signed ${filePath} successfully.`);
+              } catch (err) {
+                console.error(`Failed to sign ${filePath}:`, err);
+                process.exit(1);
+              }
+            }
+          }
+
+          signFiles();
+          EOF
+          echo "Contents of sign.js:"
+          cat sign.js
+
+      # 8. Esegui lo script per firmare i PDF
       - name: Sign PDFs with node-jsignpdf
         env:
           SIGN_CERT: ${{ secrets.SIGN_CERT }}
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
         run: node sign.js
 
-      # 6. Commit e push dei PDF firmati
+      # 9. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
