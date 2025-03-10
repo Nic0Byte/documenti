@@ -1,10 +1,10 @@
-name: Build Typst Documentation, Sign PDFs and Commit
+name: Build Typst Documentation, Sign PDFs and Show Signature Data
 
 on:
   push:
     branches:
       - main
-    # Evita loop ignorando i PDF già firmati
+    # Ignora i PDF già firmati per evitare loop
     paths-ignore:
       - 'documents/**/*.pdf'
 
@@ -37,7 +37,7 @@ jobs:
           typst --version
 
       # 3. Compilazione dei file .typ in PDF (output in documents/)
-      - name: Compile all Typst files to PDF
+      - name: Compile Typst files to PDF
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
             output="documents/$(echo "$file" | sed 's|^sources/||; s|\.typ$|.pdf|')"
@@ -45,43 +45,49 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Setup di Java (per eventuali step futuri, se necessario)
-      - name: Set up Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: temurin
-          java-version: '11'
-
-      # 5. Setup Node.js
+      # 4. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '16'
 
-      # 6. Crea un package.json minimale e installa jsignpdf
+      # 5. Inizializza un package.json minimale ed installa le dipendenze
       - name: Initialize package.json and install dependencies
         run: |
           echo '{ "name": "node-jsignpdf-workflow", "version": "1.0.0" }' > package.json
-          npm install jsignpdf
+          npm install jsignpdf node-forge
           cat package.json
           ls -la node_modules
 
-      # 7. Crea lo script sign.js per firmare i PDF
+      # 6. Crea lo script sign.js per firmare i PDF e mostrare i dati della firma
       - name: Create sign.js
         run: |
           cat > sign.js <<'EOF'
           const fs = require('fs');
           const path = require('path');
           const signPDF = require('jsignpdf');
+          const forge = require('node-forge');
 
           async function signFiles() {
             const pdfDir = path.join(__dirname, 'documents');
-            // Filtra i file PDF che non sono già firmati (non terminano con _signed.pdf)
+            // Elenca solo i file PDF che non sono già firmati (_signed.pdf)
             const files = fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf') && !file.endsWith('_signed.pdf'));
-            
+
             // Decodifica il certificato PKCS#12 dal secret (in base64)
             const certBuffer = Buffer.from(process.env.SIGN_CERT, 'base64');
             const passphrase = process.env.SIGN_CERT_PASSWORD;
+
+            // Estrai alcuni dati dal certificato usando node-forge
+            try {
+              const binaryStr = certBuffer.toString('binary');
+              const p12Asn1 = forge.asn1.fromDer(binaryStr);
+              const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, passphrase);
+              const bags = p12.getBags({ bagType: forge.pki.oids.certBag });
+              const certObj = bags[forge.pki.oids.certBag][0].cert;
+              console.log("Certificate Subject Attributes:", certObj.subject.attributes);
+            } catch (err) {
+              console.error("Errore nell'estrazione dei dati dal certificato:", err);
+            }
 
             for (const file of files) {
               const filePath = path.join(pdfDir, file);
@@ -107,14 +113,14 @@ jobs:
           echo "Contents of sign.js:"
           cat sign.js
 
-      # 8. Esegui lo script per firmare i PDF
+      # 7. Esegui lo script per firmare i PDF
       - name: Sign PDFs with node-jsignpdf
         env:
           SIGN_CERT: ${{ secrets.SIGN_CERT }}
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
         run: node sign.js
 
-      # 9. Commit e push dei PDF firmati
+      # 8. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
@@ -126,3 +132,12 @@ jobs:
           fi
           git commit -m "Aggiorna PDF con firma digitale"
           git push origin HEAD:main
+EOF
+
+### Note
+
+- **Verifica delle dipendenze:** Il workflow inizializza un package.json minimale e installa le dipendenze **jsignpdf** e **node-forge**.
+- **Script sign.js:** Lo script legge i file PDF non firmati dalla cartella **documents**, estrae i dati del certificato (come gli attributi del subject) e firma i PDF, salvando il file firmato con il suffisso **_signed.pdf** e rimuovendo il file originale.
+- **Commit e Push:** Infine, se sono presenti modifiche (ovvero PDF firmati), vengono committate e pushate sul branch **main**.
+
+Con questo workflow, potrai vedere nei log i dettagli della firma digitale estratti dal certificato e verificare che vengano firmati solo i file non ancora firmati.
