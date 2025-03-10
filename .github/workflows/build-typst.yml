@@ -15,7 +15,7 @@ jobs:
   build-and-sign:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout e aggiornamento del repository
+      # 1. Checkout del repository e aggiornamento
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -42,59 +42,53 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Installa Java (necessario per eseguire JSignPdf)
+      # 4. Installa Java (necessario per JSignPdf)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '11'
 
-      # 5. Scarica ed estrai lo ZIP di JSignPdf 2.3.0 da SourceForge
-      - name: Download JSignPdf 2.3.0
+      # 5. Scarica ed estrai completamente lo ZIP di JSignPdf 2.3.0 da SourceForge
+      - name: Download and extract JSignPdf 2.3.0
         run: |
           sudo apt-get update
           sudo apt-get install -y unzip wget
           wget -q "https://sourceforge.net/projects/jsignpdf/files/stable/JSignPdf-2.3.0/jsignpdf-2.3.0.zip/download" -O jsignpdf-2.3.0.zip
           unzip jsignpdf-2.3.0.zip -d jsignpdf-2.3.0
-          # La struttura dello ZIP crea una doppia cartella: il JAR utile è in jsignpdf-2.3.0/jsignpdf-2.3.0/JSignPdf.jar
+          # Verifica l'intera struttura estratta
           ls -R jsignpdf-2.3.0
 
-      # 6. Setup della configurazione: crea una cartella "conf" nella directory di lavoro e copia il file conf.properties da root
+      # 6. Setup della configurazione: copiamo il file di configurazione dalla struttura dello ZIP
       - name: Setup JSignPdf configuration
         run: |
-          mkdir -p conf
-          if [ ! -f conf.properties ]; then
-            echo "Il file conf.properties non esiste nella root del repository."
-            exit 1
-          fi
-          cp conf.properties conf/conf.properties
-          ls -l conf/conf.properties
-
-      # 7. Copia il file di configurazione nella directory di default di JSignPdf ($HOME/.JSignPdf)
-      - name: Copy configuration to default location
-        run: |
+          # Il file di configurazione incluso nello ZIP si trova in:
+          # jsignpdf-2.3.0/jsignpdf-2.3.0/conf/conf.properties
           mkdir -p $HOME/.JSignPdf
-          cp conf/conf.properties $HOME/.JSignPdf/conf.properties
+          cp jsignpdf-2.3.0/jsignpdf-2.3.0/conf/conf.properties $HOME/.JSignPdf/conf.properties
           ls -l $HOME/.JSignPdf/conf.properties
 
-      # 8. Decodifica il certificato PKCS#12 dal secret e salvalo in cert.p12
+      # 7. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
 
-      # 9. Firma digitalmente i PDF usando il JAR (con Main-Class: net.sf.jsignpdf.Signer)
+      # 8. Firma digitalmente i PDF usando JSignPdf (con il manifest che specifica Main-Class: net.sf.jsignpdf.Signer)
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
           JAVA_TOOL_OPTIONS: "--add-opens=java.base/sun.security.pkcs12=ALL-UNNAMED"
         run: |
+          # Verifica la struttura di jsignpdf-2.3.0 per confermare che tutto sia presente
           ls -R jsignpdf-2.3.0
           for pdf in $(find documents -type f -name "*.pdf"); do
             filename=$(basename "$pdf")
+            # Salta i file già firmati
             if [[ "$filename" == *_signed.pdf ]]; then
               continue
             fi
             echo "Signing $pdf..."
+            # Il JAR utile si trova in jsignpdf-2.3.0/jsignpdf-2.3.0/JSignPdf.jar
             java -jar jsignpdf-2.3.0/jsignpdf-2.3.0/JSignPdf.jar \
               -q \
               -kst PKCS12 \
@@ -113,7 +107,7 @@ jobs:
             fi
           done
 
-      # 10. Commit e push dei PDF firmati
+      # 9. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
