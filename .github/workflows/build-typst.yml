@@ -15,19 +15,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout e pull del repository
+      # 1. Checkout del repository
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           persist-credentials: true
 
+      # 2. Pull latest changes
       - name: Pull latest changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
 
-      # 2. Setup della toolchain Rust e installazione di Typst CLI
+      # 3. Setup della toolchain Rust e installazione di Typst CLI
       - name: Set up Rust and Install Typst CLI
         uses: dtolnay/rust-toolchain@stable
 
@@ -36,7 +37,7 @@ jobs:
           cargo install --locked typst-cli
           typst --version
 
-      # 3. Compilazione dei file .typ in PDF (output in documents/)
+      # 4. Compilazione dei file .typ in PDF (output in documents/)
       - name: Compile all Typst files
         run: |
           find sources -type f -name "*.typ" | while read -r file; do
@@ -45,14 +46,14 @@ jobs:
             typst compile "$file" "$output"
           done
 
-      # 4. Setup di Java (necessario per JSignPdf)
+      # 5. Setup di Java (necessario per JSignPdf)
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: '11'
 
-      # 5. Debug: Verifica il file di configurazione nella repository
+      # 6. Debug: Verifica il file di configurazione nella repository
       - name: Debug repository configuration file
         run: |
           echo "DEBUG: Listing file \$GITHUB_WORKSPACE/.JSignPdf/conf.properties:"
@@ -60,14 +61,14 @@ jobs:
           echo "DEBUG: Content of .JSignPdf/conf.properties:"
           cat "$GITHUB_WORKSPACE/.JSignPdf/conf.properties"
 
-      # 6. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
+      # 7. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "DEBUG: Decoding certificate into cert.p12..."
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 7. Firma digitale dei PDF utilizzando il file di configurazione da $GITHUB_WORKSPACE/.JSignPdf/conf.properties
+      # 8. Firma digitale dei PDF utilizzando il file di configurazione dalla repository
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -82,7 +83,6 @@ jobs:
             echo "DEBUG: Signing $pdf..."
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
-              -lp \
               -lpf "$GITHUB_WORKSPACE/.JSignPdf/conf.properties" \
               -kst PKCS12 \
               -ksf cert.p12 \
@@ -100,7 +100,7 @@ jobs:
             fi
           done
 
-      # 8. Commit e push dei PDF firmati
+      # 9. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
