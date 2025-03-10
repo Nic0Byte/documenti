@@ -55,22 +55,32 @@ jobs:
           echo "DEBUG: Contenuto della directory jsignpdf-2.3.0:"
           ls -laR jsignpdf-2.3.0
 
-      # 6. Debug: Mostra il contenuto della directory jsignpdf-2.3.0/conf e del file di configurazione
-      - name: Debug Configuration File in jsignpdf-2.3.0/conf
+      # 6. Copia del file di configurazione nella cartella 'conf' nella root del repository
+      - name: Copy and Debug Configuration File
         run: |
-          echo "DEBUG: Listing directory jsignpdf-2.3.0/conf:"
-          ls -laR jsignpdf-2.3.0/conf
-          echo "DEBUG: Contenuto del file jsignpdf-2.3.0/conf/conf.properties:"
-          cat jsignpdf-2.3.0/conf/conf.properties
+          echo "DEBUG: Copio il file di configurazione in 'conf/conf.properties'"
+          mkdir -p conf
+          cp jsignpdf-2.3.0/conf/conf.properties conf/conf.properties
+          echo "DEBUG: Listing directory 'conf':"
+          ls -laR conf
+          echo "DEBUG: Contenuto di conf/conf.properties:"
+          cat conf/conf.properties
 
-      # 7. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
+      # 7. Debug: mostra il percorso corrente e il contenuto della directory di lavoro
+      - name: Debug Workspace Paths
+        run: |
+          echo "DEBUG: Workspace directory: $GITHUB_WORKSPACE"
+          echo "DEBUG: Listing root directory:"
+          ls -la $GITHUB_WORKSPACE
+
+      # 8. Decodifica del certificato PKCS#12 dal secret e salvataggio in cert.p12
       - name: Decode signing certificate
         run: |
           echo "DEBUG: Decodifica del certificato in cert.p12..."
           echo "${{ secrets.SIGN_CERT }}" | base64 -d > cert.p12
           ls -l cert.p12
 
-      # 8. Firma digitale dei PDF utilizzando il file di configurazione direttamente dalla cartella jsignpdf-2.3.0/conf
+      # 9. Firma digitale dei PDF usando JSignPdf.jar, utilizzando il file di configurazione dalla cartella conf/
       - name: Digitally sign PDFs
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
@@ -84,7 +94,7 @@ jobs:
             echo "DEBUG: Inizio firma per $pdf"
             java -jar jsignpdf-2.3.0/JSignPdf.jar \
               -q \
-              -lpf "$GITHUB_WORKSPACE/jsignpdf-2.3.0/conf/conf.properties" \
+              -lpf conf/conf.properties \
               -kst PKCS12 \
               -ksf cert.p12 \
               -ksp "$SIGN_CERT_PASSWORD" \
@@ -101,7 +111,7 @@ jobs:
             fi
           done
 
-      # 9. Commit e push dei PDF firmati
+      # 10. Commit e push dei PDF firmati
       - name: Commit and push signed PDFs
         run: |
           git config user.name "github-actions[bot]"
