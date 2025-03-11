@@ -1,8 +1,9 @@
 const signPDF = require('jsignpdf').default;
 const fs = require('fs');
 const path = require('path');
+const { PDFDocument, rgb } = require('pdf-lib');
 
-// Funzione per trovare tutti i PDF in modo ricorsivo nelle sottocartelle
+// Funzione per trovare tutti i PDF nelle sottocartelle
 function getAllPDFs(dir) {
   let results = [];
   const list = fs.readdirSync(dir);
@@ -19,6 +20,28 @@ function getAllPDFs(dir) {
   });
 
   return results;
+}
+
+// Funzione per aggiungere firma visibile
+async function addVisibleSignature(pdfPath, signedPath, signerName) {
+  const pdfBytes = fs.readFileSync(signedPath);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const pages = pdfDoc.getPages();
+  const firstPage = pages[0]; // Firma sulla prima pagina
+
+  // Testo della firma
+  const text = `Firmato digitalmente da ${signerName}\nData: ${new Date().toISOString().replace("T", " ").split(".")[0]}`;
+
+  firstPage.drawText(text, {
+    x: 50,  // Posizione X della firma
+    y: 50,  // Posizione Y della firma
+    size: 14,
+    color: rgb(0, 0, 0), // Colore nero
+  });
+
+  const modifiedPdfBytes = await pdfDoc.save();
+  fs.writeFileSync(signedPath, modifiedPdfBytes);
+  console.log(`DEBUG: Firma visibile aggiunta a ${signedPath}`);
 }
 
 async function signFiles() {
@@ -60,6 +83,9 @@ async function signFiles() {
       // Rimuove il file originale
       fs.unlinkSync(filePath);
       console.log(`DEBUG: File originale rimosso: ${filePath}`);
+
+      // Aggiungi la firma visibile
+      await addVisibleSignature(filePath, signedFilePath, "Tuo Nome");
     } catch (err) {
       console.error(`DEBUG: Errore durante la firma del file ${filePath}:`, err);
       process.exit(1);
